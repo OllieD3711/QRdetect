@@ -2,31 +2,42 @@
 
 stitchImg::stitchImg()
 {
+	dst_corners.push_back(Point(0, 0));
+	dst_corners.push_back(Point(0, 200));
+	dst_corners.push_back(Point(200, 200));
+	dst_corners.push_back(Point(200, 0));
+
+	QRcode = cv::Mat::zeros(400, 400, CV_8UC3);
+	drawDebug = false;
+}
+
+stitchImg::stitchImg(bool debug)
+{
     dst_corners.push_back(Point(0,0));
     dst_corners.push_back(Point(0,200));
     dst_corners.push_back(Point(200,200));
     dst_corners.push_back(Point(200,0));
 
-    QRcode= cv::Mat::zeros(400, 400, CV_8UC3);
+	QRcode = cv::Mat::zeros(400, 400, CV_8UC3);
+	drawDebug = debug;
 }
 
-stitchImg::~stitchImg(){
-    delete QRcorner;
-    QRcorner = nullptr;
-}
+stitchImg::~stitchImg(){}
 
 void stitchImg::undistortImg(Mat &img)
 {
     // Determine code type and pixel location:
     // type - is code the top left, top right,
     // bottom left, bottom right segment
-    qrcode *pQr = codeLocn(img);        
+    bool found = codeLocn(img);        
 
     Mat dst_img;
-    if (pQr != nullptr){
+    if (found){
         // Undistort the image segment
-        vector<Point> src_corners{Point((*pQr).corners.tl),Point((*pQr).corners.bl),
-                             Point((*pQr).corners.br),Point((*pQr).corners.tr)};
+        //vector<Point> src_corners{Point((*pQr).corners.tl),Point((*pQr).corners.bl),
+        //                     Point((*pQr).corners.br),Point((*pQr).corners.tr)};
+		vector<Point> src_corners{ Point(QRcorner.tl),Point(QRcorner.bl),Point(QRcorner.br),
+								Point(QRcorner.tr) };
         Mat h = findHomography(src_corners,dst_corners);
         warpPerspective(img, dst_img, h, Size(200,200));
     } else{
@@ -35,19 +46,24 @@ void stitchImg::undistortImg(Mat &img)
     //imshow("unwarped", dst_img);
     //waitKey(0);
 
-    if ((*pQr).loctn == "topl")
+	qrcode segment;
+	segment.corners = QRcorner;
+	dst_img.copyTo(segment.code);
+	codeElements.push_back(segment);
+
+    /*if ((*pQr).loctn == "topl")
         dst_img.copyTo(topl.code);
     else if ((*pQr).loctn == "topr")
         dst_img.copyTo(topr.code);
     else if ((*pQr).loctn == "botl")
         dst_img.copyTo(botl.code);
     else if ((*pQr).loctn == "botr")
-        dst_img.copyTo((botr.code));
+        dst_img.copyTo((botr.code));*/
 }
 
-qrcode *stitchImg::codeLocn(Mat& img)
+bool stitchImg::codeLocn(Mat& img)
 {
-    // Choose colour of boarder to extract from image
+    /*// Choose colour of boarder to extract from image
     Vec3b bgrPixel(10, 255, 10);
     Mat3b bgr (bgrPixel);
     int thresh = 5;
@@ -55,9 +71,147 @@ qrcode *stitchImg::codeLocn(Mat& img)
     Scalar maxBGR = Scalar(bgrPixel.val[0] + thresh, min(bgrPixel.val[1] + thresh, 255), bgrPixel.val[2] + thresh);
     Mat maskBGR, resultBGR, resultBGR_blur;
     inRange(img, minBGR, maxBGR, maskBGR);
-    bitwise_and(img,img,resultBGR,maskBGR);
+    bitwise_and(img,img,resultBGR,maskBGR);*/
 
-    // Find the centroid of the boarder and QR code to determine the location of the
+	Mat blackWhite, gray;
+	cvtColor(img, gray, CV_BGR2GRAY);
+	blur(gray, gray, Size(3, 3));
+	inRange(gray, 150, 255, blackWhite);
+
+	vector<vector<Point>> SimpContours;
+	Mat SimpImg;
+	img.copyTo(SimpImg);
+
+	// Find contours in the Black and White image. These contours will trace at least two of the four sidese of QR code
+	// Then sort contours in terms of largest area. This way, only contour tracing QR code boarder is taken
+	findContours(blackWhite, SimpContours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+	sort(SimpContours.begin(), SimpContours.end(), sortContour);
+	// Only take the greater convex shape of the QR code contour. This reduces the number of contour corner points found
+	vector<Point> hull;
+	convexHull(SimpContours[0], hull);
+	// Draw the smallest sized circle enclosing all the points of the QR contour. This will include a minimum of three of the four
+	// QR code corners. These corners will lie closely to the enclosing circle boarder
+	Point2f centre;
+	float radius;
+	minEnclosingCircle(SimpContours[0], centre, radius);
+
+	if (drawDebug) {
+		Scalar conColour	= Scalar(0, 0, 255);
+		Scalar hullColour	= Scalar(255, 0, 0);
+		Scalar circleColour = Scalar(0, 255, 0);
+		drawContours(SimpImg, SimpContours, 0, conColour, 1, 8);
+		drawContours(SimpImg, vector<vector<Point>> {hull}, 0, 1, 8);
+		circle(SimpImg, centre, (int)radius, circleColour, 1, 8);
+	}
+
+	//Iterate through convext hull points to find three corners of QR code
+	vector<pair<int, Point>> dist;
+	for (unsigned int i = 0; i < hull.size(); i++)
+	{
+		int xh = hull[i].x;
+		int yH = hull[i].y;
+		int xC = centre.x;
+		int yC = centre.y;
+		dist.push_back(make_pair(SQ(xH - xC) + SQ(yH - yC), hull[i]));
+	}
+	sort(dist.begin(), dist.end(), sortPointPair);
+	vector<pair<int, Point>> corners = { dist[0] };		// Contour point closest to radial circle
+	for (unsigned int = 1; i < hull.size(); i++)
+	{
+		if (dist[i].first < SQ(0.66*radius)) {			// If contour point is too far from circle radius, not corner
+			continue;
+		}
+		else {
+			bool too_close = false;
+			for (vector<pair<int, Point>>::iterator it = corners.begin(); it < corners.end(); it++) {
+				double separation = (double)(SQ(dist[i].second.x - (*it).second.x))
+					+ (double)(SQ(dist[i].second.y - (*it).second.y));
+				if (separation < SQ(0.66*radius)) {		// If contour point is too close to previously found corner, ignore
+					too_close = true;
+					break;
+				}
+			}
+			if (!too_close)
+				corners.push_back(dist[i]);				// Add contour point to vector of corners
+		}
+	}
+
+	if (drawDebug)
+	{
+		for (vector<pair<int, Point>>::iterator it = corners.begin(); it < corners.end(); it++) {
+			Scalar cornerColour = Scalar(255, 255, 255);
+			circle(SimpImg, (*it).second, 4, cornerColour, -1, 8);
+		}
+	}
+
+	// We check we have found at least three corners in image, and then we assign them 
+	// labels according to their position wrt centre of QR code (tl, tr, bl, br)
+	bool tl = false, tr = false, bl = false, br = false;
+	bool 2fewCnrs = false;
+	for (int i = 0; i < 3; i++) {
+		try {
+			pnt = corners.at(i).second;
+			if (pnt.x < centre.x) {
+				if (pnt.y < centre.y) {
+					QRcorner.tl = pnt;
+					tl = true;
+				}
+				else {
+					QRcorner.bl = pnt;
+					bl = true;
+				}
+			}
+			else {
+				if (pnt.y < centre.y) {
+					QRcorner.tr = pnt;
+					tr = true;
+				}
+				else {
+					QRcorner.br = pnt;
+					br = true;
+				}
+			}
+		}
+		catch (...)
+			2fewCnrs = true;
+	}
+
+	// Check if we have found at least three points, and find location of the fourth
+	if (!2fewCnrs)
+	{
+		if (!tl) {
+			int x, y;
+			x = centre.x - abs(pnts.br.x - centre.x);
+			y = centre.y - abs(pnts.br.y - centre.y);
+			QRcorner.tl = Point(x, y);
+		}
+		else if (!tr) {
+			int x, y;
+			x = centre.x + abs(pnts.bl.x - centre.x);
+			y = centre.y - abs(pnts.bl.y - centre.y);
+			QRcorner.tr = Point(x, y);
+		}
+		else if (!bl) {
+			int x, y;
+			x = centre.x - abs(pnts.tr.x - centre.x);
+			y = centre.y + abs(pnts.tr.y - centre.y);
+			QRcorner.bl = Point(x, y);
+		}
+		else if (!br) {
+			int x, y;
+			x = centre.x + abs(pnts.tl.x - centre.x);
+			y = centre.y + abs(pnts.tl.y - centre.y);
+			QRcorner.br = Point(x, y);
+		}
+		return true;
+	}
+	else
+		return false;
+
+
+
+
+    /*// Find the centroid of the boarder and QR code to determine the location of the
     // QR code
     Mat gray;
     vector<vector<Point>> contours;
@@ -91,7 +245,7 @@ qrcode *stitchImg::codeLocn(Mat& img)
     circle(gray,QRcentroid,2,white,-1);
     circle(gray,iPadcentroid,2,white,-1);
     imshow("Centroid",gray);
-    waitKey(0);*/
+    waitKey(0);
 
     // Find corners of image
     QRcorner = new cnrs;
@@ -111,7 +265,7 @@ qrcode *stitchImg::codeLocn(Mat& img)
 
     for (int i = 0; i < k; i++){
 
-    }*/
+    }
     vector<vector<Point>> Contours;
     vector<Vec4i> Hierarchy;
     findContours(dst_norm_scaled,Contours,Hierarchy,RETR_TREE,CHAIN_APPROX_SIMPLE,Point(0,0));
@@ -190,7 +344,7 @@ qrcode *stitchImg::codeLocn(Mat& img)
             botr.loctn = "botr";
             return &botr;
         }
-    }
+    }*/
 }
 
 bool stitchImg::stictch()

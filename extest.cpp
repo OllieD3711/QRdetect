@@ -1,4 +1,4 @@
-/*#include <iostream>
+#include <iostream>
 #include <exception>
 #include "stitchimg.h"
 #include <zbar.h>
@@ -21,10 +21,10 @@ int main()
     char const* source_window = "Constructed QR code";
     namedWindow(source_window, WINDOW_AUTOSIZE);
 
-    Mat src1 = imread("../QRdetect/QR_segments/tl.png");
-    Mat src3 = imread("../QRdetect/QR_segments/tr.png");
-    Mat src2 = imread("../QRdetect/QR_segments/bl.png");
-    Mat src4 = imread("../QRdetect/QR_segments/br.png");
+    Mat src1 = imread("../QRdetect/QR_photos/tl.PNG");
+    Mat src3 = imread("../QRdetect/QR_photos/tr.PNG");
+    Mat src2 = imread("../QRdetect/QR_photos/bl.PNG");
+    Mat src4 = imread("../QRdetect/QR_photos/br.PNG");
     cout << src1.depth() << " " << src1.channels() << endl;
 
     // Assume src1 is seen first, so process and save
@@ -81,4 +81,4 @@ int main()
         }
     }
     return 0;
-}*/
+}

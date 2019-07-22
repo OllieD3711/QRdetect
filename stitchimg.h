@@ -24,7 +24,7 @@ struct cnrs {
 struct qrcode {
     Mat code;
     cnrs corners;
-    string loctn;
+    Point2f loctn;
 };
 
 Point2f intersection(cnrs corner);
@@ -32,7 +32,8 @@ Point2f intersection(cnrs corner);
 class stitchImg
 {
 public:
-    stitchImg();
+	stitchImg();
+    stitchImg(bool debug);
 
     ~stitchImg();
 
@@ -44,25 +45,33 @@ public:
 
     void QRcodeRead();
 
-    struct comparePix
+	// Takes contours and sorts them largest to smallest in terms of enclosed area
+	struct sortContour
+	{
+		inline bool operator() (const vector<Point> &a, const vector<Point> &b)
+		{
+			double areaA = fabs(contourArea(Mat(a)));
+			double areaB = fabs(contourArea(Mat(b)));
+			return (areaA > areaB);
+		}
+	}
+
+	// Takes pixel values and sorts them largest to smallest in terms of measurement parameter
+    struct sortPointPair
     {
-        inline bool operator() (const pair<double, Point> &a, const pair<double,Point> &b)
+        inline bool operator() (const pair<int, Point> &a, const pair<int,Point> &b)
         {
-            return (a.first < b.first);
+            return (a.first > b.first);
         }
     };
 private:
-    qrcode *codeLocn(Mat &img);
-
+    bool codeLocn(Mat &img);
+	bool drawDebug;
     cnrs findCrns(Mat &img);
-
-    qrcode topl;
-    qrcode topr;
-    qrcode botl;
-    qrcode botr;
+    vector<qrcode> codeElements;
     vector<Point> dst_corners;
     Mat QRcode;
-    cnrs *QRcorner;
+    cnrs QRcorner;
 };
 
 #endif // STITCHIMG_H
