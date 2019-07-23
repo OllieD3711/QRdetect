@@ -1,4 +1,4 @@
-#include <iostream>
+/*#include <iostream>
 #include <exception>
 #include "stitchimg.h"
 #include <zbar.h>
@@ -184,7 +184,7 @@ int main()
         Scalar colour = Scalar(0,0,255);
         drawContours(KCOSImg,KCOSContours,(int)i,colour,2,8);
     }
-    imshow("KCOS Contour", KCOSImg);*/
+    imshow("KCOS Contour", KCOSImg);
     imshow(contour_window,SimpImg);
     waitKey(0);
 }
@@ -205,3 +205,4 @@ Point getCorner(Point a, Point b, Point c)
 {
 
 }
+*/

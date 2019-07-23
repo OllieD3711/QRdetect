@@ -7,7 +7,7 @@ stitchImg::stitchImg()
 	dst_corners.push_back(Point(200, 200));
 	dst_corners.push_back(Point(200, 0));
 
-	QRcode = cv::Mat::zeros(400, 400, CV_8UC3);
+    QRcode = cv::Mat::zeros(400, 400, CV_8UC1);
 	drawDebug = false;
 }
 
@@ -18,7 +18,7 @@ stitchImg::stitchImg(bool debug)
     dst_corners.push_back(Point(200,200));
     dst_corners.push_back(Point(200,0));
 
-	QRcode = cv::Mat::zeros(400, 400, CV_8UC3);
+    QRcode = cv::Mat::zeros(400, 400, CV_8UC1);
 	drawDebug = debug;
 }
 
@@ -40,15 +40,14 @@ void stitchImg::undistortImg(Mat &img)
 								Point(QRcorner.tr) };
         Mat h = findHomography(src_corners,dst_corners);
         warpPerspective(img, dst_img, h, Size(200,200));
+        cvtColor(dst_img,dst_img,CV_BGR2GRAY);
     } else{
         return;
     }
-    //imshow("unwarped", dst_img);
-    //waitKey(0);
 
-	qrcode segment;
+    qrcode segment;
 	segment.corners = QRcorner;
-	dst_img.copyTo(segment.code);
+    dst_img.copyTo(segment.code);
 	codeElements.push_back(segment);
 
     /*if ((*pQr).loctn == "topl")
@@ -63,16 +62,6 @@ void stitchImg::undistortImg(Mat &img)
 
 bool stitchImg::codeLocn(Mat& img)
 {
-    /*// Choose colour of boarder to extract from image
-    Vec3b bgrPixel(10, 255, 10);
-    Mat3b bgr (bgrPixel);
-    int thresh = 5;
-    Scalar minBGR = Scalar(bgrPixel.val[0] - thresh, bgrPixel.val[1] - thresh, bgrPixel.val[2] - thresh);
-    Scalar maxBGR = Scalar(bgrPixel.val[0] + thresh, min(bgrPixel.val[1] + thresh, 255), bgrPixel.val[2] + thresh);
-    Mat maskBGR, resultBGR, resultBGR_blur;
-    inRange(img, minBGR, maxBGR, maskBGR);
-    bitwise_and(img,img,resultBGR,maskBGR);*/
-
 	Mat blackWhite, gray;
 	cvtColor(img, gray, CV_BGR2GRAY);
 	blur(gray, gray, Size(3, 3));
@@ -85,7 +74,7 @@ bool stitchImg::codeLocn(Mat& img)
 	// Find contours in the Black and White image. These contours will trace at least two of the four sidese of QR code
 	// Then sort contours in terms of largest area. This way, only contour tracing QR code boarder is taken
 	findContours(blackWhite, SimpContours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
-	sort(SimpContours.begin(), SimpContours.end(), sortContour);
+    sort(SimpContours.begin(), SimpContours.end(), sortContour());
 	// Only take the greater convex shape of the QR code contour. This reduces the number of contour corner points found
 	vector<Point> hull;
 	convexHull(SimpContours[0], hull);
@@ -100,7 +89,7 @@ bool stitchImg::codeLocn(Mat& img)
 		Scalar hullColour	= Scalar(255, 0, 0);
 		Scalar circleColour = Scalar(0, 255, 0);
 		drawContours(SimpImg, SimpContours, 0, conColour, 1, 8);
-		drawContours(SimpImg, vector<vector<Point>> {hull}, 0, 1, 8);
+        drawContours(SimpImg, vector<vector<Point>> {hull}, 0, hullColour, 1, 8);
 		circle(SimpImg, centre, (int)radius, circleColour, 1, 8);
 	}
 
@@ -108,17 +97,17 @@ bool stitchImg::codeLocn(Mat& img)
 	vector<pair<int, Point>> dist;
 	for (unsigned int i = 0; i < hull.size(); i++)
 	{
-		int xh = hull[i].x;
+        int xH = hull[i].x;
 		int yH = hull[i].y;
 		int xC = centre.x;
 		int yC = centre.y;
 		dist.push_back(make_pair(SQ(xH - xC) + SQ(yH - yC), hull[i]));
 	}
-	sort(dist.begin(), dist.end(), sortPointPair);
+    sort(dist.begin(), dist.end(), sortPointPair());
 	vector<pair<int, Point>> corners = { dist[0] };		// Contour point closest to radial circle
-	for (unsigned int = 1; i < hull.size(); i++)
+    for (unsigned int i = 1; i < hull.size(); i++)
 	{
-		if (dist[i].first < SQ(0.66*radius)) {			// If contour point is too far from circle radius, not corner
+        if (dist[i].first < SQ(0.8*radius)) {			// If contour point is too far from circle radius, not corner
 			continue;
 		}
 		else {
@@ -141,13 +130,17 @@ bool stitchImg::codeLocn(Mat& img)
 		for (vector<pair<int, Point>>::iterator it = corners.begin(); it < corners.end(); it++) {
 			Scalar cornerColour = Scalar(255, 255, 255);
 			circle(SimpImg, (*it).second, 4, cornerColour, -1, 8);
-		}
-	}
+		}        
+        char const * debug_window = "Debug Image";
+        imshow(debug_window,SimpImg);
+        waitKey(0);
+    }
 
 	// We check we have found at least three corners in image, and then we assign them 
 	// labels according to their position wrt centre of QR code (tl, tr, bl, br)
 	bool tl = false, tr = false, bl = false, br = false;
-	bool 2fewCnrs = false;
+    bool _2fewCnrs = false;
+    Point pnt;
 	for (int i = 0; i < 3; i++) {
 		try {
 			pnt = corners.at(i).second;
@@ -172,44 +165,42 @@ bool stitchImg::codeLocn(Mat& img)
 				}
 			}
 		}
-		catch (...)
-			2fewCnrs = true;
+        catch (...){
+            _2fewCnrs = true;
+        }
 	}
 
 	// Check if we have found at least three points, and find location of the fourth
-	if (!2fewCnrs)
+    if (!_2fewCnrs)
 	{
 		if (!tl) {
 			int x, y;
-			x = centre.x - abs(pnts.br.x - centre.x);
-			y = centre.y - abs(pnts.br.y - centre.y);
+            x = centre.x - abs(QRcorner.br.x - centre.x);
+            y = centre.y - abs(QRcorner.br.y - centre.y);
 			QRcorner.tl = Point(x, y);
 		}
 		else if (!tr) {
 			int x, y;
-			x = centre.x + abs(pnts.bl.x - centre.x);
-			y = centre.y - abs(pnts.bl.y - centre.y);
+            x = centre.x + abs(QRcorner.bl.x - centre.x);
+            y = centre.y - abs(QRcorner.bl.y - centre.y);
 			QRcorner.tr = Point(x, y);
 		}
 		else if (!bl) {
 			int x, y;
-			x = centre.x - abs(pnts.tr.x - centre.x);
-			y = centre.y + abs(pnts.tr.y - centre.y);
+            x = centre.x - abs(QRcorner.tr.x - centre.x);
+            y = centre.y + abs(QRcorner.tr.y - centre.y);
 			QRcorner.bl = Point(x, y);
 		}
 		else if (!br) {
 			int x, y;
-			x = centre.x + abs(pnts.tl.x - centre.x);
-			y = centre.y + abs(pnts.tl.y - centre.y);
+            x = centre.x + abs(QRcorner.tl.x - centre.x);
+            y = centre.y + abs(QRcorner.tl.y - centre.y);
 			QRcorner.br = Point(x, y);
 		}
-		return true;
-	}
+        return true;
+    }
 	else
 		return false;
-
-
-
 
     /*// Find the centroid of the boarder and QR code to determine the location of the
     // QR code
@@ -241,7 +232,7 @@ bool stitchImg::codeLocn(Mat& img)
     Point2f QRcentroid = Point2f(muQR.m10/muQR.m00, muQR.m01/muQR.m00);
     Point2f iPadcentroid = Point2f(muiPad.m10/muiPad.m00, muiPad.m01/muiPad.m00);;
 
-    /*Scalar white(255,255,255);
+    Scalar white(255,255,255);
     circle(gray,QRcentroid,2,white,-1);
     circle(gray,iPadcentroid,2,white,-1);
     imshow("Centroid",gray);
@@ -257,7 +248,7 @@ bool stitchImg::codeLocn(Mat& img)
     dilate(dst_norm_scaled,dst_norm_scaled,element);
     //imshow("Edge detection", dst_norm_scaled);
     //waitKey(0);
-    /*int k = 50;
+    int k = 50;
     kLargestHeap fps(dst_norm_scaled,k);
     for (int i = 0; i < dst_norm_scaled.cols*dst_norm_scaled.rows; i++){
         fps.swapRoot(dst_norm_scaled,i);
@@ -347,25 +338,99 @@ bool stitchImg::codeLocn(Mat& img)
     }*/
 }
 
-bool stitchImg::stictch()
+bool stitchImg::stitch(int perm[4])
 {
-    if((!topl.code.empty()) && (!topr.code.empty()) &&
-            (!botl.code.empty()) && (!botr.code.empty())){
+    //if((!topl.code.empty()) && (!topr.code.empty()) &&
+    //        (!botl.code.empty()) && (!botr.code.empty())){
+    if(codeElements.size() == 4){
         Rect toplROI(0,0,200,200), toprROI(200,0,200,200), botlROI(0,200,200,200), botrROI(200,200,200,200);
-        (topl.code).copyTo(QRcode(toplROI));
-        topr.code.copyTo(QRcode(toprROI));
-        botl.code.copyTo(QRcode(botlROI));
-        botr.code.copyTo(QRcode(botrROI));
+        (codeElements.at(perm[0]).code).copyTo(QRcode(toplROI));
+        (codeElements.at(perm[1]).code).copyTo(QRcode(toprROI));
+        (codeElements.at(perm[2]).code).copyTo(QRcode(botlROI));
+        (codeElements.at(perm[3]).code).copyTo(QRcode(botrROI));
         return true;
     }else{
         return false;
     }
 }
 
-void stitchImg::QRcodeRead()
+bool stitchImg::stitch()
 {
-   //QRCodeDetector qrDetector = QRCodeDetector::QRCodeDetector();
+    //if((!topl.code.empty()) && (!topr.code.empty()) &&
+    //        (!botl.code.empty()) && (!botr.code.empty())){
+    int perm[4] = {0,1,2,3};
+    if(codeElements.size() == 4){
+        Rect toplROI(0,0,200,200), toprROI(200,0,200,200), botlROI(0,200,200,200), botrROI(200,200,200,200);
+        (codeElements.at(perm[0]).code).copyTo(QRcode(toplROI));
+        (codeElements.at(perm[1]).code).copyTo(QRcode(toprROI));
+        (codeElements.at(perm[2]).code).copyTo(QRcode(botlROI));
+        (codeElements.at(perm[3]).code).copyTo(QRcode(botrROI));
+        return true;
+    }else{
+        return false;
+    }
 }
+
+bool stitchImg::QRcodeRead()
+{
+    int permutation[] = {0,1,2,3};
+    bool stitchSuccess = stitch(permutation);
+
+    if (stitchSuccess){
+        ImageScanner scanner;
+        scanner.set_config(ZBAR_QRCODE, ZBAR_CFG_ENABLE, 1);
+
+        Mat QRcomplete = QRcode;
+        Image Code(QRcomplete.cols,QRcomplete.rows,"Y800", (uchar *)QRcomplete.data, QRcomplete.cols*QRcomplete.rows);
+        for (int i = 0; i < 4; i++){
+            bool foundValid = false;
+            int n = scanner.scan(Code);
+            if(n){foundValid=true;}
+            while (!n && (next_permutation(permutation,permutation+4))){
+                stitch(permutation);
+                QRcomplete = QRcode;
+                //cvtColor(QRcomplete,QRgray, CV_BGR2GRAY);
+                Code.set_data((uchar *)QRcomplete.data, QRcomplete.cols*QRcomplete.rows);
+
+                n = scanner.scan(Code);
+                if(n)
+                    foundValid = true;
+            }
+
+            if (foundValid)
+            {
+                for (Image::SymbolIterator symbol = Code.symbol_begin(); symbol != Code.symbol_end(); ++symbol){
+                    obj.type = symbol->get_type_name();
+                    obj.data = symbol->get_data();
+                }
+                return true;
+            }
+            for(unsigned int j = 0; j < codeElements.size(); j ++){
+                int angle = i*90;
+                rotate_90n(codeElements.at(j).code,codeElements.at(j).code,angle);
+            }
+        }
+    }
+    return false;
+}
+
+\
+void rotate_90n(Mat const &src, Mat &dst, int angle)
+{
+    if(angle == 270 || angle == -90){
+        transpose(src,dst);
+        flip(dst,dst,0);
+    }else if (angle == 180 || angle == -180){
+        flip(src,dst,-1);
+    }else if (angle == 90 || angle == -270){
+        transpose(src,dst);
+        flip(dst,dst,1);
+    }else{
+        if(src.data != dst.data)
+            src.copyTo(dst);
+    }
+}
+
 
 Point2f intersection(cnrs corner)
 {

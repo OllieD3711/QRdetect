@@ -9,10 +9,11 @@
 #include <iostream>
 #include <bits/stdc++.h>
 #include "klargestheap.h"
-
+#include <zbar.h>
 
 using namespace std;
 using namespace cv;
+using namespace zbar;
 
 struct cnrs {
     Point tl;
@@ -27,7 +28,16 @@ struct qrcode {
     Point2f loctn;
 };
 
+struct decodedObject
+{
+    string type;
+    string data;
+    vector<Point> location;
+};
+
 Point2f intersection(cnrs corner);
+
+void rotate_90n(Mat const &src, Mat &dst, int angle);
 
 class stitchImg
 {
@@ -39,11 +49,14 @@ public:
 
     void undistortImg(Mat &img);
 
-    bool stictch();
+    bool stitch(int perm[4]);
+    bool stitch();
 
     Mat *getQRcode(){return &QRcode;}
 
-    void QRcodeRead();
+    decodedObject *getData(){return &obj;}
+
+    bool QRcodeRead();
 
 	// Takes contours and sorts them largest to smallest in terms of enclosed area
 	struct sortContour
@@ -54,7 +67,7 @@ public:
 			double areaB = fabs(contourArea(Mat(b)));
 			return (areaA > areaB);
 		}
-	}
+    };
 
 	// Takes pixel values and sorts them largest to smallest in terms of measurement parameter
     struct sortPointPair
@@ -72,6 +85,7 @@ private:
     vector<Point> dst_corners;
     Mat QRcode;
     cnrs QRcorner;
+    decodedObject obj;
 };
 
 #endif // STITCHIMG_H
